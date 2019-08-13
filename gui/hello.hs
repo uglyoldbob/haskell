@@ -1,3 +1,5 @@
+--static compile options
+-- -optl-mwindows -threaded
 module Main where
 
 import Control.Monad.Trans 
@@ -5,6 +7,11 @@ import qualified Graphics.UI.Gtk as G
 
 import qualified Graphics.Rendering.Cairo as C
 import qualified Graphics.Rendering.Cairo.Matrix as M
+
+import Control.Concurrent
+import System.Random
+
+thinkObedience = "Thinking really hard..."
 
 main = do
         G.initGUI
@@ -17,13 +24,23 @@ main = do
         window <- G.builderGetObject builder G.castToWindow "window1"
         button <- G.builderGetObject builder G.castToButton "button1"
         canvas <- G.builderGetObject builder G.castToDrawingArea "drawingarea1"
+        checkbox <- G.builderGetObject builder G.castToCheckButton "checkbutton1"
+        label <- G.builderGetObject builder G.castToLabel "label1"
         
         G.set window [G.windowTitle G.:= "Example program"]
 
         -- Basic user interation
-        G.on button G.buttonPressEvent $ liftIO G.mainQuit >> return False
+        G.on button G.buttonPressEvent $ liftIO $ G.labelSetLabel label thinkObedience >> return False
         G.on window G.deleteEvent $ liftIO G.mainQuit >> return False
         
+        forkIO $ do
+            let
+                printTime t = do{
+                    threadDelay 1000000;
+                    G.postGUIAsync $ G.labelSetText label (show t);
+                    printTime (t+1)}
+            printTime 0
+
         G.on canvas G.draw $ render canvas
 
         -- Display the window

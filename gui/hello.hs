@@ -7,11 +7,16 @@ import qualified Graphics.UI.Gtk as G
 
 import qualified Graphics.Rendering.Cairo as C
 import qualified Graphics.Rendering.Cairo.Matrix as M
+import qualified Data.Array.MArray
 
 import Control.Concurrent
 import System.Random
+import System.IO
 
-thinkObedience = "Thinking really hard..."
+import qualified Codec.Picture as JuicyPixels
+
+import TestModule
+import ImageProcess
 
 main = do
         G.initGUI
@@ -33,15 +38,26 @@ main = do
         G.on button G.buttonPressEvent $ liftIO $ G.labelSetLabel label thinkObedience >> return False
         G.on window G.deleteEvent $ liftIO G.mainQuit >> return False
         
+        imgz <- JuicyPixels.readImage "DSC_0408-01.jpg"
+        
+        case imgz of
+            Left x -> G.postGUIAsync $ G.labelSetText label (show "Error")
+            Right i -> do
+                jimbob <- liftIO $ convertToSurface i
+                G.on canvas G.draw $ renderSurface canvas jimbob
+                
+                whatever <- liftIO $ convertToPixBuf8 i
+                --G.on canvas G.draw $ render2 canvas whatever
+                G.postGUIAsync $ G.labelSetText label $ imageDimensions i
+
         forkIO $ do
             let
                 printTime t = do{
-                    threadDelay 1000000;
+                    threadDelay 5000000;
                     G.postGUIAsync $ G.labelSetText label (show t);
                     printTime (t+1)}
             printTime 0
-
-        G.on canvas G.draw $ render canvas
+        
 
         -- Display the window
         G.widgetShowAll window
@@ -49,14 +65,30 @@ main = do
 
 foreach :: (Monad m) => [a] -> (a -> m b) -> m [b]
 foreach = flip mapM
-        
-render :: G.DrawingArea -> C.Render()
-render canvas = do
-    C.setSourceRGB 1 0 0
+
+renderSurface :: G.DrawingArea -> C.Surface -> C.Render()
+renderSurface canvas surf = do
+    C.setSourceSurface surf 0 0
     C.paint
-    C.setSourceRGB 1 1 0
-    G.Rectangle _x _y w h <- liftIO (G.widgetGetClip canvas)
-    grid 50 100 0 $ fromIntegral h
+
+render2 :: G.DrawingArea -> G.Pixbuf -> C.Render()
+render2 canvas pb = do
+    G.setSourcePixbuf pb 0 0
+    C.paint
+    
+render :: G.DrawingArea -> Either String JuicyPixels.DynamicImage -> C.Render()
+render canvas img = do
+    case img of
+        Left x -> do
+            C.setSourceRGB 1 0 0
+            C.paint
+            C.setSourceRGB 1 1 0
+            G.Rectangle _x _y w h <- liftIO (G.widgetGetClip canvas)
+            grid 50 100 0 $ fromIntegral h
+        Right i -> do
+            test <- liftIO $ C.createImageSurface C.FormatRGB24 50 50
+            C.setSourceSurface test 0 0
+            C.paint
 
 -- Grid and axes
 grid xmin xmax ymin ymax = do

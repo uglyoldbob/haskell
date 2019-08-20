@@ -43,7 +43,7 @@ main = do
         case imgz of
             Left x -> G.postGUIAsync $ G.labelSetText label (show "Error")
             Right i -> do
-                jimbob <- liftIO $ convertToSurface i
+                jimbob <- liftIO $ convertToSurfaceDecimate i 10
                 G.on canvas G.draw $ renderSurface canvas jimbob
                 
                 whatever <- liftIO $ convertToPixBuf8 i

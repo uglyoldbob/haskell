@@ -1,4 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module ImageProcess where
@@ -19,20 +18,29 @@ type RGB8 = (JuicyPixels.Pixel8, JuicyPixels.Pixel8, JuicyPixels.Pixel8)
 type RGB16 = (JuicyPixels.Pixel16, JuicyPixels.Pixel16, JuicyPixels.Pixel16)
 
 fromJuicyPixels8 :: JuicyPixels.Image JuicyPixels.PixelRGB8 -> R.Array R.D R.DIM2 RGB8
-fromJuicyPixels8 img@JuicyPixels.Image {..} = 
+fromJuicyPixels8 img = 
     R.fromFunction
-        (R.Z R.:. imageWidth R.:. imageHeight)
+        (R.Z R.:. (JuicyPixels.imageWidth img) R.:. (JuicyPixels.imageHeight img))
         (\(R.Z R.:. x R.:. y) ->
             let (JuicyPixels.PixelRGB8 r g b) = JuicyPixels.pixelAt img x y
             in (r, g, b))
 
 fromJuicyPixels16 :: JuicyPixels.Image JuicyPixels.PixelRGB16 -> R.Array R.D R.DIM2 RGB16
-fromJuicyPixels16 img@JuicyPixels.Image {..} = 
+fromJuicyPixels16 img = 
     R.fromFunction
-        (R.Z R.:. imageWidth R.:. imageHeight)
+        (R.Z R.:. (JuicyPixels.imageWidth img) R.:. (JuicyPixels.imageHeight img))
         (\(R.Z R.:. x R.:. y) ->
             let (JuicyPixels.PixelRGB16 r g b) = JuicyPixels.pixelAt img x y
             in (r, g, b))
+
+toJuicyPixels16 :: R.Array R.D R.DIM2 RGB16 -> JuicyPixels.Image JuicyPixels.PixelRGB16
+toJuicyPixels16 array = JuicyPixels.generateImage gen width height
+  where
+    R.Z R.:. width R.:. height = R.extent array
+    gen x y =
+      let (r,g,b) = array R.! (R.Z R.:. x R.:. y)
+      in JuicyPixels.PixelRGB16 r g b
+    
 
 dynWidth :: JuicyPixels.DynamicImage -> Int
 dynWidth img = JuicyPixels.dynamicMap JuicyPixels.imageWidth img
@@ -42,14 +50,6 @@ dynHeight img = JuicyPixels.dynamicMap JuicyPixels.imageHeight img
 
 imageDimensions :: JuicyPixels.DynamicImage -> String
 imageDimensions i = ((show (dynWidth i)) ++ " " ++ (show (dynHeight i)))
-
-convertToPixBuf16 :: JuicyPixels.DynamicImage -> IO Graphics.UI.Gtk.Pixbuf
-convertToPixBuf16 x = do
-    buffer <- pixbufNew ColorspaceRgb True 16 200 200
-    rowStrideBytes <- pixbufGetRowstride buffer
-    bufferPixels <- pixbufGetPixels buffer :: IO (PixbufData Int Word)
-    let conv = JuicyPixels.convertRGB16 x
-    return buffer
 
 toWordRGB :: JuicyPixels.PixelRGB8 -> Word32
 toWordRGB (JuicyPixels.PixelRGB8 r g b) = 0xff000000 + (bw * (2^16)) + (gw * (2^8)) + rw
@@ -90,5 +90,18 @@ convertToSurface img = do
     let copyPixel (x, y) = do
         Data.Array.MArray.writeArray surfacePixels (y * rowStride + x) (toWordBGR (JuicyPixels.pixelAt conv x y))
     mapM_ copyPixel $ range ((0,0), (width-1, height-1))
-    
+    return newSurf
+
+convertToSurfaceDecimate :: JuicyPixels.DynamicImage -> Int -> IO C.Surface
+convertToSurfaceDecimate img decimate = do
+    let width = (dynWidth img) `quot` decimate
+    let height = (dynHeight img) `quot` decimate
+    newSurf <- liftIO $ C.createImageSurface C.FormatRGB24 width height
+    surfacePixels <- C.imageSurfaceGetPixels newSurf :: IO (C.SurfaceData Int Word32)
+    rowStrideBytes <- C.imageSurfaceGetStride newSurf
+    let conv = JuicyPixels.convertRGB8 img
+    let rowStride = rowStrideBytes `quot` 4
+    let copyPixel (x, y) = do
+        Data.Array.MArray.writeArray surfacePixels (y * rowStride + x) (toWordBGR (JuicyPixels.pixelAt conv (x*decimate) (y*decimate)))
+    mapM_ copyPixel $ range ((0,0), (width-1, height-1))
     return newSurf

@@ -33,33 +33,25 @@ main = do
         button <- G.builderGetObject builder G.castToButton "button1"
         canvas <- G.builderGetObject builder G.castToDrawingArea "drawingarea1"
         text1 <- G.builderGetObject builder G.castToTextView "textview1"
-        label <- G.builderGetObject builder G.castToLabel "label1"
+        num_bins_spinner <- G.builderGetObject builder G.castToSpinButton "spinbutton1"
         
         G.set window [G.windowTitle G.:= "Example program"]
 
         -- Basic user interation
-        G.on button G.buttonPressEvent $ liftIO $ G.labelSetLabel label thinkObedience >> return False
         G.on window G.deleteEvent $ liftIO G.mainQuit >> return False
 
         tb <- G.textViewGetBuffer text1
         G.on tb G.bufferChanged $ liftIO $ do
             things <- textViewString text1
             G.widgetQueueDraw canvas
-            G.labelSetLabel label things
+        G.afterValueSpinned num_bins_spinner (G.widgetQueueDraw canvas)
         
         G.on canvas G.draw $ do
             dat <- liftIO $ textViewString text1
+            numbins <- liftIO $ G.spinButtonGetValue num_bins_spinner
             let lst = csvToFloats dat
-            render3 canvas $ lst
+            render3 canvas lst (maximum [5,round numbins])
 
-        forkIO $ do
-            let
-                printTime t = do{
-                    threadDelay 5000000;
-                    G.postGUIAsync $ G.labelSetText label (show t);
-                    printTime (t+1)}
-            printTime 0
-        
 
         -- Display the window
         G.widgetShowAll window
@@ -89,8 +81,8 @@ textViewString tv = do
 foreach :: (Monad m) => [a] -> (a -> m b) -> m [b]
 foreach = flip mapM
 
-render3 :: G.DrawingArea -> [Double] -> C.Render()
-render3 canvas list = do
+render3 :: G.DrawingArea -> [Double] -> Int -> C.Render()
+render3 canvas list numbins = do
     C.setSourceRGB 1 1 1
     C.paint
     C.setSourceRGB 0 0 0
@@ -99,7 +91,7 @@ render3 canvas list = do
     C.scale 1 (-1)
     grid 0 (fromIntegral w) 0 (fromIntegral h)
     let calcm = (maximum list) * 1.1
-    plotDots $ prepareDots 0 ((fromIntegral w)/calcm) 0 ((fromIntegral h)*0.9) $ discreteCDF list 5
+    plotDots $ prepareDots 0 ((fromIntegral w)/calcm) 0 ((fromIntegral h)*0.9) $ discreteCDF list numbins
 
 prepareDot x1 x2 y1 y2 (x, y) = ((x+x1)*x2, (y+y1)*y2)
 

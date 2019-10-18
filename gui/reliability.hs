@@ -10,6 +10,9 @@ import qualified Graphics.Rendering.Cairo.Matrix as M
 import qualified Data.Array.MArray
 
 import Control.Concurrent
+import qualified Data.Text as T
+import Data.Maybe
+import Text.Read
 import System.Random
 import System.IO
 
@@ -41,10 +44,13 @@ main = do
         tb <- G.textViewGetBuffer text1
         G.on tb G.bufferChanged $ liftIO $ do
             things <- textViewString text1
+            G.widgetQueueDraw canvas
             G.labelSetLabel label things
         
-        let list = [1,6,34,5,6,3,5,67,5,3]
-        G.on canvas G.draw $ render3 canvas list               
+        G.on canvas G.draw $ do
+            dat <- liftIO $ textViewString text1
+            let lst = csvToFloats dat
+            render3 canvas $ lst
 
         forkIO $ do
             let
@@ -59,6 +65,19 @@ main = do
         G.widgetShowAll window
         G.mainGUI
 
+getlist t = do
+    dat <- textViewString t
+    let stuff = csvToFloats dat
+    return stuff
+
+csvToFloats :: String -> [Double]
+csvToFloats str = notEmpty things
+    where separated = T.splitOn (T.pack ",") (T.pack str)
+          s2 = map T.unpack separated
+          maybeThings = map Text.Read.readMaybe s2 :: [Maybe Double]
+          things = catMaybes maybeThings
+
+
 textViewString :: G.TextViewClass self => self -> IO String
 textViewString tv = do
     tb <- G.textViewGetBuffer tv
@@ -70,7 +89,7 @@ textViewString tv = do
 foreach :: (Monad m) => [a] -> (a -> m b) -> m [b]
 foreach = flip mapM
 
-render3 :: G.DrawingArea -> [Int] -> C.Render()
+render3 :: G.DrawingArea -> [Double] -> C.Render()
 render3 canvas list = do
     C.setSourceRGB 1 1 1
     C.paint
@@ -79,7 +98,7 @@ render3 canvas list = do
     C.translate 0 $ (fromIntegral (h))
     C.scale 1 (-1)
     grid 0 (fromIntegral w) 0 (fromIntegral h)
-    let calcm = (fromIntegral $ maximum list) * 1.1
+    let calcm = (maximum list) * 1.1
     plotDots $ prepareDots 0 ((fromIntegral w)/calcm) 0 ((fromIntegral h)*0.9) $ discreteCDF list 5
 
 prepareDot x1 x2 y1 y2 (x, y) = ((x+x1)*x2, (y+y1)*y2)
@@ -91,7 +110,7 @@ plotDot (x, y) = do
     C.strokePreserve
     C.fill
 
-plotDots l = sequence_ $ map plotDot l
+plotDots l = sequence_ $ Prelude.map plotDot l
 
 -- Grid and axes
 grid xmin xmax ymin ymax = do
